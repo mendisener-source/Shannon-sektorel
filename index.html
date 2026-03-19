@@ -376,37 +376,41 @@ async function fetchAllPrices(){
   document.getElementById('refresh-icon').innerHTML='<span class="spinner"></span>';
   let fetched=0;
   for(const p of PORT){
+    let cur=0,prevC=0,marketState='CLOSED';
     try{
-      const sym=encodeURIComponent(p.ticker);
-      const url=`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=2d`;
-      const proxy=`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-      let res;
-      try{res=await fetch(proxy);}catch(e){res=await fetch(url);}
-      if(!res.ok)throw new Error();
-      const data=await res.json();
-      const meta=data?.chart?.result?.[0]?.meta;
-      if(!meta)throw new Error();
-      const premarket=meta.preMarketPrice||0;
-      const regular=meta.regularMarketPrice||0;
-      const cur=premarket>0?premarket:regular>0?regular:0;
-      const marketState=meta.marketState||'CLOSED';
-      if(cur>0){
-        prevClose[p.ticker]=meta.previousClose||meta.chartPreviousClose||cur;
-        prices[p.ticker]=cur;
-        const inp=document.getElementById('price-'+p.ticker);
-        if(inp&&!inp.matches(':focus'))inp.value=cur.toFixed(2);
-        const pEl=document.getElementById('pchange-'+p.ticker);
-        if(pEl){const ch=(cur-(meta.previousClose||cur))/(meta.previousClose||cur)*100;const stateLabel=marketState==='PRE'?'⏰':marketState==='POST'?'🌙':marketState==='REGULAR'?'🟢':'🔴';pEl.textContent=`${stateLabel} ${ch>=0?'+':''}${ch.toFixed(2)}%`;pEl.style.color=ch>0?'var(--green)':ch<0?'var(--red)':'var(--muted)';}
-        fetched++;
-      }
+      const url=`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(p.ticker)}?interval=1d&range=2d`;
+      const res=await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+      if(res.ok){const d=await res.json();const m=d?.chart?.result?.[0]?.meta;if(m){cur=m.preMarketPrice||m.regularMarketPrice||0;prevC=m.previousClose||m.chartPreviousClose||0;marketState=m.marketState||'CLOSED';}}
     }catch(e){}
+    if(!cur){
+      try{
+        const url=`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(p.ticker)}?interval=1d&range=2d`;
+        const res=await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+        if(res.ok){const d=await res.json();const m=d?.chart?.result?.[0]?.meta;if(m){cur=m.preMarketPrice||m.regularMarketPrice||0;prevC=m.previousClose||m.chartPreviousClose||0;marketState=m.marketState||'CLOSED';}}
+      }catch(e){}
+    }
+    if(!cur){
+      try{
+        const res=await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(p.ticker)}?interval=1d&range=2d`);
+        if(res.ok){const d=await res.json();const m=d?.chart?.result?.[0]?.meta;if(m){cur=m.preMarketPrice||m.regularMarketPrice||0;prevC=m.previousClose||m.chartPreviousClose||0;marketState=m.marketState||'CLOSED';}}
+      }catch(e){}
+    }
+    if(cur>0){
+      prevClose[p.ticker]=prevC||prices[p.ticker]||cur;
+      prices[p.ticker]=cur;
+      const inp=document.getElementById('price-'+p.ticker);
+      if(inp&&!inp.matches(':focus'))inp.value=cur.toFixed(2);
+      const pEl=document.getElementById('pchange-'+p.ticker);
+      if(pEl&&prevC>0){const ch=(cur-prevC)/prevC*100;const st=marketState==='PRE'?'⏰':marketState==='POST'?'🌙':marketState==='REGULAR'?'🟢':'🔴';pEl.textContent=`${st} ${ch>=0?'+':''}${ch.toFixed(2)}%`;pEl.style.color=ch>0?'var(--green)':ch<0?'var(--red)':'var(--muted)';}
+      fetched++;
+    }
   }
   const now=new Date();
   document.getElementById('last-update').textContent=`Son: ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
   document.getElementById('refresh-icon').textContent='⟳';
   saveState();refreshDisplays();
   PORT.forEach(p=>checkSignal(p.ticker));
-  if(fetched===0)triggerAlert('sell','Fiyat alınamadı — piyasa kapalı olabilir');
+  if(fetched===0)triggerAlert('sell','Fiyat alınamadı — manuel giriş yapabilirsiniz');
 }
 
 function startAutoRefresh(){if(arTimer)clearInterval(arTimer);if(document.getElementById('auto-refresh').checked)arTimer=setInterval(fetchAllPrices,60000);}
